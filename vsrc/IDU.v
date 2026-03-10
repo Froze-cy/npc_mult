@@ -27,9 +27,9 @@ module IDU
     output reg         csr_wr_flag,
     output reg         load_flag  ,
     output reg  [31:0] idu_curr_pc,     
-    //IDU_EXU 握手
-    input  wire        id_ex_ready,
-    output reg         id_ex_valid,
+    //IDU_EXU IDU_CSR 握手
+    input  wire        exu_ready  ,
+    output reg         idu_valid  ,
     output wire        jump_flag  ,
     output wire        trap_flag   
 );
@@ -54,7 +54,7 @@ always @(*)begin
       case(curr_state)
 	      IDLE: begin
                     if_id_ready  = 1'b1;
-		    id_ex_valid = 1'b0;
+		    idu_valid  = 1'b0; 
 		    if(if_id_valid)
 		       next_state = SEND;
 		    else
@@ -62,15 +62,15 @@ always @(*)begin
 	      end
 	      SEND:begin
                     if_id_ready  = 1'b0;
-		    id_ex_valid = 1'b1;
-                    if(id_ex_ready)
+		    idu_valid = 1'b1;
+                    if(exu_ready)
 		       next_state = IDLE;
                     else
 	               next_state = SEND;		    
 	      end
 	      default:begin
                     if_id_ready = 1'b1;
-		    id_ex_valid  = 1'b0;
+		    idu_valid  = 1'b0;
                     next_state = IDLE;
 	      end
       endcase

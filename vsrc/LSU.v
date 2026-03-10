@@ -5,6 +5,7 @@ module LSU
    //IDU<-->LSU
    input   wire        exu_valid    ,
    output  reg         lsu_ready    ,
+   output  wire        lsu_done     ,
    input   wire [1:0]  exu_byte_type,
    input   wire        exu_sign_type,
    input   wire        exu_mem_we   ,
@@ -13,14 +14,15 @@ module LSU
    input   wire [31:0] store_addr   ,
    input   wire [31:0] load_addr    ,
    //LSU<-->WBU
-   output  reg  [31:0] lsu_load_data  
+   output  reg  [31:0] lsu_load_data ,
+   output  reg         lsu_data_valid   
 );
 
 
 import "DPI-C" function int pmem_read(input int raddr);
 import "DPI-C" function void pmem_write(input int waddr,input int wdata,input byte wmask);
 /////////////////////////状态机////////////////////////////////
-localparam IDLE = 2'd0, LD_ST = 2'd1;
+localparam IDLE = 2'd0, LOAD = 2'd1, STORE = 2'd2;
 reg [1:0]  curr_state,next_state;
 reg [1:0]  byte_type_reg;
 reg        sign_type_reg;
@@ -29,6 +31,9 @@ reg        mem_re_reg;
 reg [31:0] store_addr_reg;
 reg [31:0] store_data_reg;
 reg [31:0] load_addr_reg;
+wire       lsu_done;
+
+assign  lsu_done = lsu_data_valid;
 
 always @(posedge clk or negedge rst_n)begin
      if(!rst_n)
@@ -41,6 +46,7 @@ always @(*)begin
      case(curr_state)
 	     IDLE:begin
                   lsu_ready = 1'b1;
+		  lsu_data_valid = 1'b0;
                   if(exu_valid)
 			next_state = LD_ST;
 	          else
@@ -48,10 +54,12 @@ always @(*)begin
 	     end
 	     LD_ST:begin
 	          lsu_ready  = 1'b0;
+		  lsu_data_valid = 1'b1;
                   next_state = IDLE; 		  
 	     end
 	     default:begin
                   lsu_ready  = 1'b1;
+		  lsu_data_valid = 1'b0;
 		  next_state = IDLE;
 	     end
      endcase

@@ -430,7 +430,9 @@ int main(int argc, char** argv) {
         uint32_t s1 = get_debug_reg(9);
         uint32_t x15 = get_debug_reg(15);
      
-	if (difftest_enabled) {
+     if (difftest_enabled) {
+
+        if(dut.diff_flag) {		
             // 获取 NPC 当前寄存器状态
             for (int i = 0; i < 32; i++) {
                 npc_state.gpr[i] = get_debug_reg(i);
@@ -466,7 +468,8 @@ int main(int argc, char** argv) {
         	exit_code = 1;
                 break;   // 停止仿真
             }
-        }
+         }
+      }
 
 
         // 简单的 PC 停滞检测（可选）

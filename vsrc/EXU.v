@@ -1,55 +1,64 @@
 module EXU
 (   
-    input  wire        clk          ,
-    input  wire        rst_n        ,    
+    input  wire        clk            ,
+    input  wire        rst_n          ,     
     //IDU
-    input  wire [5:0]  idu_alu_op   ,
-    input  wire [31:0] idu_imm      ,
-    input  wire        idu_mem_we   ,  
-    input  wire        idu_mem_re   ,  
-    input  wire [1:0]  idu_byte_type,  
-    input  wire        idu_sign_type, 
-    input  wire        idu_reg_we   ,
-    input  wire [4:0]  idu_rd_addr  ,
-    input  wire        idu_break_flag,   
-    input  wire        idu_ecall_flag,
-    input  wire        idu_mret_flag,
-    input  wire        idu_load_flag,
-    input  wire [31:0] idu_curr_pc  ,
-    input  wire        jump_flag    ,
-    input  wire        trap_flag    ,
+    input  wire [5:0]  idu_alu_op     ,
+    input  wire [31:0] idu_imm        ,
+    input  wire        idu_mem_we     ,  
+    input  wire        idu_mem_re     ,  
+    input  wire [1:0]  idu_byte_type  ,  
+    input  wire        idu_sign_type  , 
+    input  wire        idu_reg_we     ,
+    input  wire [4:0]  idu_rd_addr    ,
+    input  wire        idu_break_flag ,    
+    input  wire        idu_ecall_flag ,
+    input  wire        idu_mret_flag  ,
+    input  wire        idu_load_flag  ,
+    input  wire [31:0] idu_curr_pc    ,
+    input  wire [11:0] idu_csr_addr   ,
+    input  wire        idu_csr_wr_flag,
+    input  wire        jump_flag      ,
+    input  wire        trap_flag      ,
     //IDU_EXU 握手
-    input  wire        id_ex_valid  ,
-    output  reg        id_ex_ready  ,	    
+    input  wire        idu_valid      ,
+    output  reg        exu_ready      ,	    
     //IFU
-    output  reg [31:0] jump_pc      ,
+    output  reg [31:0] jump_pc        ,
     //EXU_IFU 握手
-    input  wire        pc_ready     ,
-    output  reg        jump_valid   ,	    
+    input  wire        pc_ready       ,
+    output  reg        jump_valid     ,	    
     //LSU 
-    output  reg        exu_mem_we   ,   
-    output  reg        exu_mem_re   ,
-    output  reg [1:0]  exu_byte_type,
-    output  reg        exu_sign_type,
-    output  reg [31:0] mem_wr_addr  , 
-    output  reg [31:0] mem_rd_addr  ,
-    output  reg [31:0] exu_rs2      ,   
+    output  reg        exu_mem_we     ,   
+    output  reg        exu_mem_re     ,
+    output  reg [1:0]  exu_byte_type  ,
+    output  reg        exu_sign_type  ,
+    output  reg [31:0] mem_wr_addr    , 
+    output  reg [31:0] mem_rd_addr    ,
+    output  reg [31:0] exu_rs2        ,   
     //EXU_LSU 握手
-    input  wire        ex_ls_ready  , 
-    output  reg        ex_ls_valid  ,	    
+    input  wire        ex_ls_ready    , 
+    input  wire        lsu_done       ,
+    output  reg        ex_ls_valid    ,	    
     //registers
-    input  wire [31:0] rs1          ,
-    input  wire [31:0] rs2          ,  
-   //csr_registers 
-    input  wire [31:0] csr_rd        ,  
-    output  reg [31:0] csr_wr        , 
-    output  reg        exu_break_flag,
-    output  reg        exu_ecall_flag,
-    output  reg        exu_mret_flag ,
+    input  wire [31:0] rs1            ,
+    input  wire [31:0] rs2            ,  
+    //csr_registers 
+    input  wire [31:0] csr_rd         ,  
+    output  reg [31:0] csr_wr         , 
+    output  reg        exu_break_flag ,
+    output  reg        exu_ecall_flag ,
+    output  reg        exu_mret_flag  ,
+    output  reg        exu_csr_wr_flag,
+    output  reg [11:0] exu_csr_addr   ,
+    output  reg [31:0] exu_curr_pc    ,
+    //EXU_CSR 握手
+    output  reg        ex_csr_valid   ,
+    input  wire        trap_valid     ,
     //WBU
-    output  reg [31:0] exu_rd_wr    ,
-    output  reg [4:0]  exu_rd_addr  ,
-    output  reg        exu_reg_we   ,
+    output  reg [31:0] exu_rd_wr      ,
+    output  reg [4:0]  exu_rd_addr    ,
+    output  reg        exu_reg_we     ,
     output  reg        exu_load_flag  
 );
 
@@ -74,21 +83,23 @@ end
 always @(*)begin
        case(curr_state)
 	       IDLE:begin
-                      id_ex_ready = 1'b1;
+                      exu_ready = 1'b1;
 		      ex_ls_valid = 1'b0;
+		      ex_csr_valid= 1'b0;
 		      jump_valid = 1'b0;
-                      if(id_ex_valid&&jump_flag)
-			   next_state = JUMP;
-		      else if(id_ex_valid&&trap_flag)
+		      if(idu_valid&&trap_flag)
                            next_state = WAIT_CSR;
-		      else if(id_ex_valid)
+                      else if(idu_valid&&jump_flag)
+			   next_state = JUMP;
+		      else if(idu_valid)
 			   next_state = SEND;
 		      else
 			   next_state = IDLE;   
 	       end
 	       JUMP:begin
-                      id_ex_ready = 1'b0;
+                      exu_ready = 1'b0;
 		      ex_ls_valid = 1'b0;
+		      ex_csr_valid= 1'b0;
 		      jump_valid = 1'b1;
 		      if(pc_ready)
 			   next_state = IDLE;
@@ -96,28 +107,33 @@ always @(*)begin
 			   next_state = JUMP;   
 	       end
 	       WAIT_CSR:begin
-                     id_ex_ready = 1'b0;
+                     exu_ready = 1'b0;
 		     ex_ls_valid = 1'b0;
+		     ex_csr_valid= 1'b1;
 		     jump_valid = 1'b0;
-		     next_state  = IDLE;    
+		     if(trap_valid&&pc_ready)
+		        next_state  = IDLE;    
+	             else
+			next_state  = WAIT_CSR;     
 	       end
 	       SEND:begin
-                      id_ex_ready = 1'b0;
+                      exu_ready = 1'b0;
 		      jump_valid = 1'b0;
 		      ex_ls_valid = 1'b1;
-		      if(ex_ls_ready)
+		      ex_csr_valid= 1'b0;
+		      if(lsu_done)
 			   next_state = IDLE;
 		      else
 			   next_state = SEND;   
 	       end
 	       default:begin
-                     id_ex_ready = 1'b1;
+                     exu_ready = 1'b1;
 		     ex_ls_valid = 1'b0;
+		     ex_csr_valid= 1'b0;
                      jump_valid = 1'b0;
 		     next_state  = IDLE;
 	       end
-
-
+       endcase
 end
 
 //数据缓存
@@ -137,22 +153,26 @@ always @(posedge clk or negedge rst_n)begin
 	     exu_load_flag <= 1'b0;
 	     exu_curr_pc   <= 32'h0;
 	     exu_csr_rd    <= 32'h0;
+             exu_csr_wr_flag <= 1'b0;
+             exu_csr_addr    <= 12'b0;
         end
-	else if(id_ex_valid&&id_ex_ready)begin
+	else if(idu_valid&&exu_ready)begin
              imm_reg    <= idu_imm   ;
 	     alu_op_reg <= idu_alu_op;
 	     exu_rs1    <= rs1;
 	     exu_rs2    <= rs2;
 	     exu_mem_we <= idu_mem_we;  
              exu_mem_re <= idu_mem_re;  
-             exu_byte_type <= idu_byte_type;
-             exu_sign_type <= idu_sign_type;
-             exu_break_flag<= idu_break_flag;
-             exu_ecall_flag<= idu_ecall_flag;
-             exu_mret_flag <= idu_mret_flag ;
-	     exu_load_flag <= idu_load_flag ;
-	     exu_curr_pc   <= idu_curr_pc   ;
-	     exu_csr_rd    <= csr_rd ;
+             exu_byte_type  <= idu_byte_type;
+             exu_sign_type  <= idu_sign_type;
+             exu_load_flag  <= idu_load_flag;
+	     exu_break_flag <= idu_break_flag;
+             exu_ecall_flag <= idu_ecall_flag;
+             exu_mret_flag  <= idu_mret_flag;
+	     exu_curr_pc    <= idu_curr_pc;
+	     exu_csr_rd     <= csr_rd;
+             exu_csr_wr_flag<= idu_csr_wr_flag;        
+	     exu_csr_addr   <= idu_csr_addr;   
      end
 end
 
