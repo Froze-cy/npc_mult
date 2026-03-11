@@ -8,33 +8,24 @@ module csr_regfile(
     output reg         trap_valid  ,	    
     //EXU<-->CSR
     input  wire        ecall_flag  ,
-    input  wire        ebreak_flag ,
+    input  wire        break_flag  ,
     input  wire        mret_flag   ,
     input  wire [31:0] curr_pc     ,
     input  wire [31:0] csr_wr      ,
     input  wire        csr_wr_flag ,
     input  wire [11:0] csr_addr    ,
-    output wire [31:0] csr_rd      ,     
+    output reg  [31:0] csr_rd      ,     
     //EXU_CSR 握手 
-    input  wire        ex_csr_valid	   	    
+    input  wire        ex_csr_valid,
+    output reg         ex_csr_ready	    
 );
-//定义csr地址
-localparam mstatus   = 12'h300;
-localparam mtvec     = 12'h305;
-localparam mscratch  = 12'h340;
-localparam mepc      = 12'h341;
-localparam mcause    = 12'h342;
-localparam mcycle    = 12'hb00;
-localparam mcycleh   = 12'hb80;
-localparam mvendorid = 12'hf11;
-localparam marchid   = 12'hf12;
 
 
 /////////////////////////////状态机///////////////////////////////
 localparam IDLE = 2'd0, TRAP_SEND = 2'd1; 
 reg [1:0]  curr_state,next_state;
 reg        ecall_flag_reg;
-reg        ebreak_flag_reg;
+reg        break_flag_reg;
 reg        mret_flag_reg;
 reg [31:0] curr_pc_reg;
 
@@ -50,21 +41,24 @@ end
 always @(*)begin
      case(curr_state)
 	     IDLE:begin
-                  trap_valid= 1'b0;
+                  trap_valid   = 1'b0;
+		  ex_csr_ready = 1'b1;
 		  if(ex_csr_valid)
 		      next_state = TRAP_SEND;
 	          else
 		      next_state = IDLE;	  
 	     end
 	     TRAP_SEND:begin 
-		  trap_valid = 1'b1;
+		  trap_valid   = 1'b1;
+		  ex_csr_ready = 1'b0;
 		  if(pc_ready)
 		      next_state  = IDLE;
 		  else
 		      next_state  = TRAP_SEND;	      
 	     end
 	     default:begin
-                  trap_valid = 1'b0;
+                  trap_valid   = 1'b0;
+		  ex_csr_ready = 1'b0;
                   next_state = IDLE;
 	     end
      endcase
@@ -73,13 +67,13 @@ end
 always @(posedge clk or negedge rst_n)begin
 	if(!rst_n)begin
             ecall_flag_reg <= 1'b0 ;
-            ebreak_flag_reg<= 1'b0 ;
+            break_flag_reg <= 1'b0 ;
             mret_flag_reg  <= 1'b0 ;
             curr_pc_reg    <= 32'b0;
         end
-	else if(exu_valid&&csr_ready)begin
+	else if(ex_csr_valid&&ex_csr_ready)begin
             ecall_flag_reg <= ecall_flag ;
-            ebreak_flag_reg<= ebreak_flag;
+            break_flag_reg <= break_flag ;
             mret_flag_reg  <= mret_flag  ;
             curr_pc_reg    <= curr_pc    ;
         end	
@@ -88,121 +82,131 @@ end
 
 //////////////////////////////////////////////////////////////////
 
-reg  [31:0] mtvec_pc ;
-reg  [31:0] csr_rf [4095:0] ;
-    
+//定义csr地址
+localparam MSTATUS   = 12'h300;
+localparam MTVEC     = 12'h305;
+localparam MSCRATCH  = 12'h340;
+localparam MEPC      = 12'h341;
+localparam MCAUSE    = 12'h342;
+localparam MCYCLE    = 12'hb00;
+localparam MCYCLEH   = 12'hb80;
+localparam MVENDORID = 12'hf11;
+localparam MARCHID   = 12'hf12;
 
+
+reg [31:0] mstatus; 
+reg [31:0] mepc;
+reg [31:0] mcause;
+reg [31:0] mcycle;
+reg [31:0] mcycleh;
+reg [31:0] mscratch;
+reg [31:0] mtvec;
+reg [31:0] mvendorid;
+reg [31:0] marchid;
+    
 //初始化csr
 initial begin
-integer i;
-for(i=0;i<4096;i=i+1)
-   if(i==mvendorid)
-       csr_rf[i] = 32'h79737978;
-   else if(i==marchid)
-       csr_rf[i] = 32'h1234abcd;
-   else	   
-       csr_rf[i] = 32'h0 ;	
+  mvendorid = 32'h79737978;
+  marchid   = 32'h1234abcd;   
 end
 
+//csr_rd
+always @(*)begin
+     case(csr_addr)
+        MSTATUS: csr_rd = mstatus;
+          MTVEC: csr_rd = mtvec;
+       MSCRATCH: csr_rd = mscratch;	
+           MEPC: csr_rd = mepc;
+	 MCAUSE: csr_rd = mcause; 
+         MCYCLE: csr_rd = mcycle;
+	MCYCLEH: csr_rd = mcycleh;
+      MVENDORID: csr_rd = mvendorid;
+        MARCHID: csr_rd = marchid;
+        default: csr_rd = 32'h0;	
+     endcase
+end
 
-reg         cycle_flag   ;
-wire [31:0] csr_mstatus  ;
-wire [31:0] csr_mtvec    ; 
-wire [31:0] csr_mscratch ;  
-wire [31:0] csr_mepc     ;
-wire [31:0] csr_mcause   ; 
-wire [31:0] csr_mcycle   ; 
-wire [31:0] csr_mcycleh  ; 
-wire [31:0] csr_mvendorid; 
-wire [31:0] csr_marchid  ; 
-wire [29:0] mtvec_base   ;
-wire [1:0]  mtvec_mode   ;
-
-//读取特殊csr的值
-assign csr_mstatus   = csr_rf[mstatus  ]; 
-assign csr_mtvec     = csr_rf[mtvec    ];
-assign csr_mscratch  = csr_rf[mscratch ];
-assign csr_mepc      = csr_rf[mepc     ];
-assign csr_mcause    = csr_rf[mcause   ];
-assign csr_mcycle    = csr_rf[mcycle   ];
-assign csr_mcycleh   = csr_rf[mcycleh  ];
-assign csr_mvendorid = csr_rf[mvendorid];
-assign csr_marchid   = csr_rf[marchid  ];
-
-
-assign csr_rd     = csr_rf[csr_addr];
-assign mtvec_base = csr_rf[mtvec][31:2];
-assign mtvec_mode = csr_rf[mtvec][1:0];
-
-
+//trap_pc
 always @(*)begin
    if(ecall_flag_reg || break_flag_reg)
-        trap_pc = mtvec_pc ;	   
-   else if(mret_flag)
-	trap_pc = curr_pc_reg;
+        trap_pc = {mtvec[31:2],2'b0};	   
+   else if(mret_flag_reg)
+	trap_pc = mepc;
    else
 	trap_pc = 32'h0;   
 end
 
 //mtvec
-always @(*)begin
-   if(ecall_flag_reg)
-	mtvec_pc = {mtvec_base,2'b0};
-   else
-	mtvec_pc = 32'h0;   
+always @(posedge clk or negedge rst_n)begin
+   if(!rst_n)
+	mtvec <= 32'h0;
+   else if(csr_wr_flag&&csr_addr==MTVEC)
+	mtvec <= csr_wr;  
 end
 
+
+
 //mstatus
-always @(posedge clk)begin
-   if(ecall_flag_reg)
-	csr_rf[mstatus] <= 32'h00001800;   
+always @(posedge clk or negedge rst_n)begin
+   if(!rst_n)
+	mstatus <= 32'h0;   
+   else if(ecall_flag_reg||break_flag_reg)//MPP=3,MPIE=0,MIE=0
+	mstatus <= 32'h00001800;  
+   else if(mret_flag_reg) //MPP=3,MPIE=1,MIE=0
+	mstatus <= 32'h00001c00;
+   else if(csr_wr_flag&&csr_addr==MSTATUS)
+	mstatus <= csr_wr;   
 end
 
 //mepc
-always @(posedge clk)begin
-   if(ecall_flag_reg)
-	csr_rf[mepc] <= curr_pc_reg;
+always @(posedge clk or negedge rst_n)begin
+   if(!rst_n)
+	mepc <= 32'h0;    
+   else if(ecall_flag_reg||break_flag_reg)
+	mepc <= curr_pc_reg;
+   else if(csr_wr_flag&&csr_addr==MEPC)
+	mepc <= csr_wr;   
 end
 
 //mcause
-always @(posedge clk)begin
-   if(ecall_flag_reg)
-	csr_rf[mcause] <= 32'h0000000b; //异常号11,即M模式环境调用   
+always @(posedge clk or negedge rst_n)begin
+   if(!rst_n)
+	mcause <= 32'h0;   
+   else if(ecall_flag_reg)
+	mcause <= 32'h0000000b; //异常号11,即M模式环境调用 
+   else if(break_flag_reg)
+	mcause <= 32'h00000003; //异常号3，break   
+   else if(csr_wr_flag&&csr_addr==MCAUSE)
+	mcause <= csr_wr;   
 end
 
-
-//csrrs csrrw
-always @(posedge clk)begin	   
-   if(csr_wr_flag&&(csr_addr!=mvendorid)&&(csr_addr!=marchid))
-	csr_rf[csr_addr] <= csr_wr ;
-end
-
-
-
-//计数器实现
+//mscratch
 always @(posedge clk or negedge rst_n)begin
      if(!rst_n)
-         csr_rf[mcycle] <= 32'h0;
+       mscratch <= 32'h0;	     
+     else if(csr_wr_flag&&csr_addr==MSCRATCH)
+       mscratch <= csr_wr;	   
+end
+
+//mcycle
+always @(posedge clk or negedge rst_n)begin
+     if(!rst_n)
+         mcycle <= 32'h0;
+     else if(csr_wr_flag&&csr_addr==MCYCLE)
+	 mcycle <= csr_wr;
      else 
-	 csr_rf[mcycle] <= csr_rf[mcycle] + 32'h1;   
+	 mcycle <= mcycle + 32'h1;   
 end
 
-always @(posedge clk or negedge rst_n)begin  
-    if(!rst_n)
-	 cycle_flag <= 1'b0;   
-    else if(&csr_rf[mcycle]==1'b1)
-	 cycle_flag <= 1'b1;
-    else
-	 cycle_flag <= 1'b0;   
-end
-
+//mcycleh
 always @(posedge clk or negedge rst_n)begin
     if(!rst_n)
-	 csr_rf[mcycleh] <= 32'h0;   
-    else if(cycle_flag)
-	 csr_rf[mcycleh] <= csr_rf[mcycleh] + 32'h1 ;
+	 mcycleh <= 32'h0;   
+    else if(csr_wr_flag&&csr_addr==MCYCLEH)
+	 mcycleh <= csr_wr;   
+    else if(&mcycle)
+	 mcycleh <= mcycleh + 32'h1;
 end
-
 
 
 endmodule

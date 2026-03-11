@@ -33,12 +33,11 @@ wire [4:0]  idu_rs2_addr   ;
 wire [4:0]  rd_wr_addr     ;  
 wire [31:0] imm            ;
 wire [5:0]  alu_op         ;
-wire        reg_we         ;
+wire        idu_reg_we     ;
 wire [1:0]  byte_type      ;
 wire        sign_type      ;
 wire        load_flag      ;
 wire        ecall_flag     ;
-wire        csr_wr_flag    ;
 wire        mret_flag      ;
 wire        break_flag     ;
 wire        jump_flag      ;
@@ -69,12 +68,11 @@ wire [11:0] exu_csr_addr   ;
 wire [31:0] exu_curr_pc    ;
 wire [31:0] exu_rd_wr      ;
 wire [31:0] csr_wr         ;
-wire [31:0] mepc_wr        ;
 
 //LSU
-wire        lsu_ready     ;
+wire        ex_ls_ready   ;
 wire [31:0] lsu_load_data ;
-wire        lsu_done      ;
+wire        lsu_data_valid;
 
 //WBU
 wire [31:0] wbu_wr_data;
@@ -87,10 +85,10 @@ wire [31:0] rs1 ;
 wire [31:0] rs2 ;
 
 //csr_regfile
-wire        trap_valid;
-wire [31:0] mtvec_pc  ;
-wire [31:0] csr_mepc  ;
-wire [31:0] csr_rd    ;
+wire        trap_valid  ;
+wire [31:0] trap_pc     ;
+wire        ex_csr_ready;
+wire [31:0] csr_rd      ;
 
 /////////////////////////////////////////////////////////////
 
@@ -122,9 +120,9 @@ IDU IDU_inst
 .clk        (clk        ) ,
 .rst_n      (rst_n      ) ,
 //IFU<-->IDU
-.inst_ready (inst_ready ) ,
+.if_id_ready(if_id_ready) ,
 .inst       (inst       ) ,
-.inst_valid (inst_valid ) ,
+.if_id_valid(if_id_valid) ,
 .curr_pc    (curr_pc    ) ,
 //IDU<-->register
 .rs1_addr   (idu_rs1_addr) ,
@@ -136,7 +134,7 @@ IDU IDU_inst
 .alu_op     (alu_op     ) ,   
 .mem_we     (mem_we     ) ,
 .mem_re     (mem_re     ) ,
-.reg_we     (reg_we     ) ,
+.idu_reg_we (idu_reg_we ) ,
 .rd_wr_addr (rd_wr_addr ) ,
 .byte_type  (byte_type  ) ,
 .sign_type  (sign_type  ) ,
@@ -172,9 +170,9 @@ EXU EXU_inst
 .idu_mem_re     (mem_re         ) ,
 .idu_byte_type  (byte_type      ) ,
 .idu_sign_type  (sign_type      ) ,
-.idu_reg_we     (reg_we         ) ,
+.idu_reg_we     (idu_reg_we     ) ,
 .idu_rd_addr    (rd_wr_addr     ) ,
-.idu_load_flag  (idu_load_flag  ) ,
+.idu_load_flag  (load_flag      ) ,
 .idu_break_flag (break_flag     ) , 
 .idu_ecall_flag (ecall_flag     ) ,
 .idu_mret_flag  (mret_flag      ) ,
@@ -184,6 +182,7 @@ EXU EXU_inst
 .trap_flag      (trap_flag      ) ,
 //EXU<-->CSR
 .ex_csr_valid   (ex_csr_valid   ) ,
+.ex_csr_ready   (ex_csr_ready   ) ,
 .trap_valid     (trap_valid     ) ,	
 .exu_csr_wr_flag(exu_csr_wr_flag) ,
 .exu_csr_addr   (exu_csr_addr   ) ,
@@ -194,9 +193,8 @@ EXU EXU_inst
 .csr_rd         (csr_rd         ) ,
 .csr_wr         (csr_wr         ) ,      
 //EXU<-->LSU
-.exu_valid    (exu_valid     ) ,
-.lsu_ready    (lsu_ready     ) ,
-.lsu_done     (lsu_done      ) ,
+.ex_ls_valid  (ex_ls_valid   ) ,
+.ex_ls_ready  (ex_ls_ready   ) ,
 .mem_wr_addr  (mem_wr_addr   ) ,
 .mem_rd_addr  (mem_rd_addr   ) ,
 .exu_rs2      (exu_rs2       ) ,
@@ -221,13 +219,12 @@ LSU LSU_inst
 .clk           (clk           ) ,
 .rst_n         (rst_n         ) ,
 //EXU<-->LSU
-.exu_valid     (exu_valid     ) ,
-.lsu_ready     (lsu_ready     ) ,
-.lsu_done      (lsu_done      ) ,
-.mem_we        (exu_mem_we    ) , 
-.mem_re        (exu_mem_re    ) , 
-.byte_type     (exu_byte_type ) ,
-.sign_type     (exu_sign_type ) ,
+.ex_ls_valid   (ex_ls_valid   ) ,
+.ex_ls_ready   (ex_ls_ready   ) ,
+.exu_mem_we    (exu_mem_we    ) , 
+.exu_mem_re    (exu_mem_re    ) , 
+.exu_byte_type (exu_byte_type ) ,
+.exu_sign_type (exu_sign_type ) ,
 .store_data    (exu_rs2       ) ,
 .store_addr    (mem_wr_addr   ) ,
 .load_addr     (mem_rd_addr   ) ,
@@ -240,8 +237,11 @@ LSU LSU_inst
 /////////////////////////////////////////////////////////////
 WBU WBU_isnt
 (
+.clk           (clk           ) ,
+.rst_n         (rst_n         ) ,
 .exu_load_flag (exu_load_flag ) ,
 .exu_rd_wr     (exu_rd_wr     ) ,   
+.exu_reg_we    (exu_reg_we    ) ,
 .exu_rd_addr   (exu_rd_addr   ) ,
 .lsu_load_data (lsu_load_data ) ,
 .lsu_data_valid(lsu_data_valid) ,
@@ -257,7 +257,7 @@ regfile regfile_inst
 .clk         (clk         ) , 
 .rs1_addr    (idu_rs1_addr) ,
 .rs2_addr    (idu_rs2_addr) ,
-.rd_wr_addr  (wbu_rd_addr ) ,
+.rd_wr_addr  (wbu_wr_addr ) ,
 .reg_we      (wbu_we      ) ,
 .wr_data     (wbu_wr_data ) ,    
 .rs1         (rs1         ) ,
@@ -272,11 +272,12 @@ csr_regfile csr_regfile_inst
 .clk         (clk            ),  
 .rst_n       (rst_n          ),
 .ex_csr_valid(ex_csr_valid   ),
+.ex_csr_ready(ex_csr_ready   ),
 .pc_ready    (pc_ready       ),
 .trap_valid  (trap_valid     ),
 .trap_pc     (trap_pc        ),
 .ecall_flag  (exu_ecall_flag ),
-.ebreak_flag (exu_ebreak_flag),
+.break_flag  (exu_break_flag ),
 .mret_flag   (exu_mret_flag  ),
 .csr_wr_flag (exu_csr_wr_flag),
 .csr_addr    (exu_csr_addr   ),    

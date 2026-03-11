@@ -12,10 +12,10 @@ module IDU
     output wire [4:0]  rs1_addr   ,
     output wire [4:0]  rs2_addr   , 
     output wire [4:0]  rd_wr_addr ,
-    output reg         reg_we     ,
     //EXU
     output reg  [31:0] imm        ,
     output reg  [5:0]  alu_op     ,
+    output reg         idu_reg_we ,
     output reg         mem_we     ,
     output reg         mem_re     ,
     output reg  [1:0]  byte_type  ,
@@ -129,7 +129,7 @@ always @(*)begin
     alu_op     = 6'b0 ;
     mem_we     = 1'b0 ;
     mem_re     = 1'b0 ;
-    reg_we     = 1'b0 ;
+    idu_reg_we = 1'b0 ;
     byte_type  = 2'b0 ;  //2'b0:lw 2'b1:lb 2'b10:lh
     sign_type  = 1'b0 ;
     load_flag  = 1'b0 ;
@@ -141,7 +141,7 @@ always @(*)begin
     case (opcode)
     //R-type
     7'b0110011:begin
-	reg_we     = 1'b1 ;
+	idu_reg_we = 1'b1 ;
         mem_we     = 1'b0 ;
         mem_re     = 1'b0 ;
 	byte_type  = 2'b0 ;
@@ -176,7 +176,7 @@ always @(*)begin
       end
     //I-type
     7'b0010011:begin   
-               reg_we     = 1'b1 ;
+               idu_reg_we = 1'b1 ;
 	       mem_we     = 1'b0 ;
                mem_re     = 1'b0 ;
                byte_type  = 2'b0 ;
@@ -208,7 +208,7 @@ always @(*)begin
     //lui
     7'b0110111:begin
                 alu_op     = 6'd15;
-		reg_we     = 1'b1 ;
+		idu_reg_we = 1'b1 ;
                 mem_we     = 1'b0 ;
                 mem_re     = 1'b0 ;
                 byte_type  = 2'b0 ;
@@ -222,7 +222,7 @@ always @(*)begin
     //auipc
     7'b0010111:begin
                 alu_op     = 6'd16;
-		reg_we     = 1'b1 ;
+		idu_reg_we = 1'b1 ;
                 mem_we     = 1'b0 ;
                 mem_re     = 1'b0 ;
                 byte_type  = 2'b0 ;
@@ -235,7 +235,7 @@ always @(*)begin
 	        end
     //I-type		
     7'b0000011:begin
-	reg_we     = 1'b1 ;
+	idu_reg_we = 1'b1 ;
         mem_we     = 1'b0 ;
         mem_re     = 1'b1 ;
         load_flag  = 1'b1 ;
@@ -280,7 +280,7 @@ always @(*)begin
       end
     //S-type
     7'b0100011:begin
-	    reg_we     = 1'b0 ;
+	    idu_reg_we = 1'b0 ;
             mem_we     = 1'b1 ;
             mem_re     = 1'b0 ;
        	    load_flag  = 1'b0 ;
@@ -314,7 +314,7 @@ always @(*)begin
      //jal
      7'b1101111:begin
                alu_op     = 6'd22;
-	       reg_we     = 1'b1 ;
+	       idu_reg_we = 1'b1 ;
                mem_we     = 1'b0 ;
                mem_re     = 1'b0 ;
                byte_type  = 2'b0 ;
@@ -329,7 +329,7 @@ always @(*)begin
      //jalr
      7'b1100111:begin
                alu_op     = 6'd23;
-	       reg_we     = 1'b1 ;
+	       idu_reg_we = 1'b1 ;
                mem_we     = 1'b0 ;
                mem_re     = 1'b0 ;
                byte_type  = 2'b0 ;
@@ -352,7 +352,7 @@ always @(*)begin
 		    case(inst_reg[31:20])
 		         //ecall
 		        12'h0:begin
-				reg_we     = 1'b0 ;
+				idu_reg_we = 1'b0 ;
                                 break_flag = 1'b0 ;
 		                ecall_flag = 1'b1 ;
 		                csr_wr_flag= 1'b0 ;
@@ -361,7 +361,7 @@ always @(*)begin
 		              end
 		        //ebreak		
 		        12'h1:begin  //good trap
-			        reg_we     = 1'b0 ; 
+			        idu_reg_we = 1'b0 ; 
                                 break_flag = 1'b1 ;
 		                ecall_flag = 1'b0 ;
 		                csr_wr_flag= 1'b0 ;
@@ -370,7 +370,7 @@ always @(*)begin
 		                goodtrap_dpi();
 		              end
 		        12'h2:begin  //bad trap 
-                                reg_we     = 1'b0 ;
+                                idu_reg_we = 1'b0 ;
 			        break_flag = 1'b1 ;
 		                ecall_flag = 1'b0 ;
 		                csr_wr_flag= 1'b0 ;
@@ -379,7 +379,7 @@ always @(*)begin
 		                badtrap_dpi();
 		              end
 		      12'h302:begin  //mret
-                                reg_we     = 1'b0 ;
+                                idu_reg_we = 1'b0 ;
 		                break_flag = 1'b0 ;
                                 ecall_flag = 1'b0 ;
 				csr_wr_flag= 1'b0 ;
@@ -387,7 +387,7 @@ always @(*)begin
 			        alu_op     = 6'd41;	
 		              end 	   
 		      default:begin
-			        reg_we     = 1'b0 ;
+			        idu_reg_we = 1'b0 ;
 		                break_flag = 1'b1 ;
 			        ecall_flag = 1'b0 ;
 			        csr_wr_flag= 1'b0 ;
@@ -398,7 +398,7 @@ always @(*)begin
 	             endcase
 		 //csrrw
 		 3'b1:begin 
-		        reg_we     = 1'b1 ;
+		        idu_reg_we = 1'b1 ;
 	                break_flag = 1'b0 ;
 			ecall_flag = 1'b0 ;
 		        csr_wr_flag= 1'b1 ;
@@ -407,7 +407,7 @@ always @(*)begin
 	              end
 	     	//csrrs      
                 3'b10:begin
-			reg_we     = 1'b1 ;
+			idu_reg_we = 1'b1 ;
                         break_flag = 1'b0 ;
 			ecall_flag = 1'b0 ;
 			mret_flag  = 1'b0 ;
@@ -418,7 +418,7 @@ always @(*)begin
 	                  csr_wr_flag = 1'b0;			
 		      end
 	     default:begin
-		      reg_we       = 1'b0 ;
+		      idu_reg_we   = 1'b0 ;
                       break_flag   = 1'b1 ;
 		      ecall_flag   = 1'b0 ;
 		      csr_wr_flag  = 1'b0 ; 
@@ -430,7 +430,7 @@ always @(*)begin
       end
    //B-type
    7'b1100011: begin
-	 reg_we     = 1'b0 ;
+	 idu_reg_we = 1'b0 ;
          mem_we     = 1'b0 ;
          mem_re     = 1'b0 ;
          byte_type  = 2'b0 ;
@@ -453,7 +453,7 @@ always @(*)begin
        end    
   default:begin  
             alu_op     = 6'd0 ;
-	    reg_we     = 1'b0 ;
+	    idu_reg_we = 1'b0 ;
             mem_we     = 1'b0 ;
             mem_re     = 1'b0 ;
             byte_type  = 2'b0 ;

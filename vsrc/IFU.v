@@ -27,50 +27,75 @@ wire [31:0]  imem_addr ;
 
 ////////////////////////////状态机/////////////////////////////
 localparam IDLE = 2'd0, SEND = 2'd1, WAIT_PC = 2'd2;
-reg [1:0] curr_state,next_state;
+reg [1:0] curr_state;
 reg       imem_addr_valid;
-
+reg       inst_valid;
 always @(posedge clk or negedge rst_n)begin
-      if(!rst_n)
-	   curr_state <= IDLE;
-      else   
-           curr_state <= next_state;
+        if(!rst_n)
+           inst_valid <= 1'b0;
+        else if(imem_addr_valid)
+	   inst_valid <= 1'b1;
+        else if(if_id_valid&&if_id_ready)
+	   inst_valid <= 1'b0;  	
 end
 
-always @(*)begin
-     case(curr_state)
+
+always @(posedge clk or negedge rst_n)begin
+        if(!rst_n)begin
+           curr_state <= IDLE;
+	   imem_addr_valid <= 1'b0;
+           if_id_valid <= 1'b0;
+           pc_ready <= 1'b0;
+	end
+
+        else 
+	 case(curr_state)
 	     IDLE:begin
-                  imem_addr_valid = 1'b1;  
-                  if_id_valid = 1'b0;
-		  pc_ready = 1'b0;
-		  if(if_id_ready)
-		     next_state = SEND; 
-	          else 
-		     next_state = IDLE;	  
+             if(inst_valid&&if_id_ready)begin
+		     curr_state <= SEND;
+                     imem_addr_valid <= 1'b0;  
+                     if_id_valid <= 1'b1;
+		     pc_ready <= 1'b0;
+	          end 
+	     else begin
+		     curr_state <= IDLE;	  
+	             imem_addr_valid <= 1'b1;  
+                     if_id_valid <= 1'b0;
+		     pc_ready <= 1'b0;
+	          end
 	     end
-	     SEND:begin
-                  if_id_valid = 1'b1;
-		  imem_addr_valid = 1'b0;
-		  pc_ready = 1'b0; 
-		  if(if_id_ready)
-                     next_state = WAIT_PC;
-	          else
-	             next_state = SEND;		  
+	     SEND:begin 
+             if(if_id_ready)
+                     curr_state <= WAIT_PC;
+	             if_id_valid <= 1'b0;
+		     imem_addr_valid = 1'b0;
+		     pc_ready <= 1'b0; 	     
+	     else begin
+	             curr_state <= SEND;		  
+	             if_id_valid <= 1'b1;
+		     imem_addr_valid <= 1'b0;
+		     pc_ready <= 1'b0; 	 
+	          end  
 	     end
-	 WAIT_PC:begin
-                  if_id_valid   = 1'b0;
- 		  imem_addr_valid = 1'b0;
-                  pc_ready = 1'b1;		  
-                  if(jump_valid||trap_valid||wb_done)
-		      next_state = IDLE;
-                  else 
-	              next_state = WAIT_PC;		  
+	 WAIT_PC:begin  
+	     if(jump_valid||trap_valid||wb_done)begin
+                     curr_state  <= IDLE;
+	             if_id_valid <= 1'b0;
+ 		     imem_addr_valid <= 1'b1;
+                     pc_ready <= 1'b0;		
+	         end
+	    else begin
+	              curr_state <= WAIT_PC;		  
+	              if_id_valid  <= 1'b0;
+ 		      imem_addr_valid <= 1'b0;
+                      pc_ready <= 1'b1;		
+	         end
 	     end
 	     default: begin
-                  imem_addr_valid = 1'b0;
-		  if_id_valid = 1'b0;
-		  ex_if_ready = 1'b0;
-		  next_state = IDLE;
+                  imem_addr_valid <= 1'b1;
+		  if_id_valid <= 1'b0;
+		  pc_ready <= 1'b0;
+		  curr_state <= IDLE;
 	     end
      endcase    
 end
@@ -78,7 +103,7 @@ end
 always @(posedge clk or negedge rst_n)begin
    if(!rst_n)
 	 inst <= 32'h0;
-   else if(imem_addr_valid)
+   else if(imem_addr_valid&&!inst_valid)
 	 inst <= pmem_read(imem_addr); 
 end
 ////////////////////////////////////////////////////////////////
