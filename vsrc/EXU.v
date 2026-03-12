@@ -1,7 +1,8 @@
 module EXU
 (   
     input  wire        clk            ,
-    input  wire        rst_n          ,     
+    input  wire        rst_n          ,  
+    output reg         exu_done       ,   
     //IDU
     input  wire [5:0]  idu_alu_op     ,
     input  wire [31:0] idu_imm        ,
@@ -20,6 +21,7 @@ module EXU
     input  wire        idu_csr_wr_flag,
     input  wire        jump_flag      ,
     input  wire        trap_flag      ,
+    input  wire        lsu_flag       ,
     //IDU_EXU 握手
     input  wire        idu_valid      ,
     output  reg        exu_ready      ,	    
@@ -33,8 +35,8 @@ module EXU
     output  reg        exu_mem_re     ,
     output  reg [1:0]  exu_byte_type  ,
     output  reg        exu_sign_type  ,
-    output  reg [31:0] mem_wr_addr    , 
-    output  reg [31:0] mem_rd_addr    ,
+    output  reg [31:0] exu_mem_wr_addr, 
+    output  reg [31:0] exu_mem_rd_addr,
     output  reg [31:0] exu_rs2        ,   
     //EXU_LSU 握手
     input  wire        ex_ls_ready    , 
@@ -64,74 +66,135 @@ module EXU
 
 
 /////////////////////////////////状态机//////////////////////////////////
-localparam IDLE = 2'd0, JUMP = 2'd1, WAIT_CSR = 2'd2, SEND = 2'd3 ;
+localparam IDLE = 3'd0, JUMP = 3'd1, WAIT_CSR = 3'd2, LSU_SEND = 3'd3, ALU_SEND = 3'd4;
 
-reg [1:0]  curr_state, next_state;
+reg [2:0]  curr_state;
 reg [31:0] imm_reg;
 reg [5:0]  alu_op_reg;
 reg [31:0] exu_rs1;
 reg [31:0] exu_csr_rd;
 
 always @(posedge clk or negedge rst_n)begin
-     if(!rst_n)
-	  curr_state <= IDLE;
-     else
-	  curr_state <= next_state;   
-end
-
-always @(*)begin
-       case(curr_state)
+	if(!rst_n)begin
+               curr_state  <= IDLE;
+               exu_ready   <= 1'b1;
+               ex_csr_valid<= 1'b0;
+               jump_valid  <= 1'b0;
+	       ex_ls_valid <= 1'b0;
+	       exu_done    <= 1'b0;
+	end
+	else case(curr_state)
 	       IDLE:begin
-                      exu_ready = 1'b1;
-		      ex_ls_valid = 1'b0;
-		      ex_csr_valid= 1'b0;
-		      jump_valid = 1'b0;
-		      if(idu_valid&&trap_flag)
-                           next_state = WAIT_CSR;
-                      else if(idu_valid&&jump_flag)
-			   next_state = JUMP;
-		      else if(idu_valid)
-			   next_state = SEND;
-		      else
-			   next_state = IDLE;   
+		      if(idu_valid&&trap_flag)begin
+                           curr_state  <= WAIT_CSR;
+		           exu_ready   <= 1'b0;
+		           ex_ls_valid <= 1'b0;
+		           ex_csr_valid<= 1'b1;
+		           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0; 
+		      end
+		      else if(idu_valid&&jump_flag)begin
+			   curr_state  <= JUMP;
+                           exu_ready   <= 1'b0;
+		           ex_ls_valid <= 1'b0;
+		           ex_csr_valid<= 1'b0;
+		           jump_valid  <= 1'b1;
+			   exu_done    <= 1'b0; 
+		      end
+		      else if(idu_valid&&lsu_flag)begin
+			   curr_state  <= LSU_SEND;
+		           exu_ready   <= 1'b0;
+		           ex_ls_valid <= 1'b1;
+		           ex_csr_valid<= 1'b0;
+		           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0;
+		      end
+                      else if(idu_valid)begin
+			   curr_state  <= ALU_SEND;
+		           exu_ready   <= 1'b0;
+		           ex_ls_valid <= 1'b0;
+		           ex_csr_valid<= 1'b0;
+		           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0;
+		      end
+		      else begin
+			   curr_state  <= IDLE;   
+	                   exu_ready   <= 1'b1;
+		           ex_ls_valid <= 1'b0;
+		           ex_csr_valid<= 1'b0;
+		           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0; 
+		      end
 	       end
-	       JUMP:begin
-                      exu_ready = 1'b0;
-		      ex_ls_valid = 1'b0;
-		      ex_csr_valid= 1'b0;
-		      jump_valid = 1'b1;
-		      if(pc_ready)
-			   next_state = IDLE;
-		      else
-			   next_state = JUMP;   
+	       JUMP:begin 
+	              if(pc_ready)begin 
+			   curr_state  <= IDLE;
+		           exu_ready   <= 1'b1;
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0; 
+		      end
+		      else begin
+			   curr_state  <= JUMP;   
+	                   exu_ready   <= 1'b0;
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b1;
+			   exu_done    <= 1'b0; 
+                      end
 	       end
-	       WAIT_CSR:begin
-                     exu_ready = 1'b0;
-		     ex_ls_valid = 1'b0;
-		     ex_csr_valid= 1'b1;
-		     jump_valid = 1'b0;
-		    // if(trap_valid&&pc_ready)
-		     if(ex_csr_ready)   
-		        next_state  = IDLE;    
-	             else
-			next_state  = WAIT_CSR;     
+	       WAIT_CSR:begin 
+	             if(ex_csr_ready)begin   
+		           curr_state  <= IDLE;    
+	                   exu_ready   <= 1'b1;             
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+		           exu_done    <= 1'b0; 
+		     end 
+		     else begin
+			   curr_state  <= WAIT_CSR;     
+	                   exu_ready   <= 1'b0;
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b1;
+                           jump_valid  <= 1'b0;
+		           exu_done    <= 1'b0;	
+	             end
 	       end
-	       SEND:begin
-                      exu_ready = 1'b0;
-		      jump_valid = 1'b0;
-		      ex_ls_valid = 1'b1;
-		      ex_csr_valid= 1'b0;
-		      if(ex_ls_ready)
-			   next_state = IDLE;
-		      else
-			   next_state = SEND;   
+	       LSU_SEND:begin 
+	             if(ex_ls_ready)begin
+			   curr_state  <= IDLE;
+	                   exu_ready   <= 1'b1; 	     
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b1; 
+		     end
+		     else begin
+			   curr_state  <= LSU_SEND;  
+                           exu_ready   <= 1'b0; 
+                           ex_ls_valid <= 1'b1;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b0; 
+	             end		   
 	       end
-	       default:begin
-                     exu_ready = 1'b1;
-		     ex_ls_valid = 1'b0;
-		     ex_csr_valid= 1'b0;
-                     jump_valid = 1'b0;
-		     next_state  = IDLE;
+             ALU_SEND:begin
+			   curr_state  <= IDLE;  
+                           exu_ready   <= 1'b1; 
+                           ex_ls_valid <= 1'b0;
+                           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+			   exu_done    <= 1'b1; 		   
+	       end
+	      default:begin
+                           exu_ready   <= 1'b1;
+		           ex_ls_valid <= 1'b0;
+		           ex_csr_valid<= 1'b0;
+                           jump_valid  <= 1'b0;
+		           exu_done    <= 1'b0;
+		           curr_state  <= IDLE;
 	       end
        endcase
 end
@@ -139,44 +202,44 @@ end
 //数据缓存
 always @(posedge clk or negedge rst_n)begin
 	if(!rst_n)begin
-             imm_reg    <= 32'h0;
-             alu_op_reg <= 6'd0 ;
-             exu_rs1    <= 32'b0;
-             exu_rs2    <= 32'b0;
-             exu_mem_we <= 1'b0 ;  
-             exu_mem_re <= 1'b0 ;  
-             exu_byte_type <= 2'b0;
-             exu_sign_type <= 1'b0;
-             exu_break_flag<= 1'b0;
-             exu_ecall_flag<= 1'b0;
-             exu_mret_flag <= 1'b0; 
-	     exu_load_flag <= 1'b0;
-	     exu_curr_pc   <= 32'h0;
-	     exu_csr_rd    <= 32'h0;
+             imm_reg         <= 32'h0;
+             alu_op_reg      <= 6'd0 ;
+             exu_rs1         <= 32'b0;
+             exu_rs2         <= 32'b0;
+             exu_mem_we      <= 1'b0 ;  
+             exu_mem_re      <= 1'b0 ;  
+             exu_byte_type   <= 2'b0;
+             exu_sign_type   <= 1'b0;
+             exu_break_flag  <= 1'b0;
+             exu_ecall_flag  <= 1'b0;
+             exu_mret_flag   <= 1'b0; 
+	     exu_load_flag   <= 1'b0;
+	     exu_curr_pc     <= 32'h0;
+	     exu_csr_rd      <= 32'h0;
              exu_csr_wr_flag <= 1'b0;
              exu_csr_addr    <= 12'b0;
 	     exu_reg_we      <= 1'b0;
              exu_rd_addr     <= 5'd0; 
         end
 	else if(idu_valid&&exu_ready)begin
-             imm_reg    <= idu_imm   ;
-	     alu_op_reg <= idu_alu_op;
-	     exu_rs1    <= rs1;
-	     exu_rs2    <= rs2;
-	     exu_mem_we <= idu_mem_we;  
-             exu_mem_re <= idu_mem_re;  
-             exu_byte_type  <= idu_byte_type;
-             exu_sign_type  <= idu_sign_type;
-             exu_load_flag  <= idu_load_flag;
-	     exu_break_flag <= idu_break_flag;
-             exu_ecall_flag <= idu_ecall_flag;
-             exu_mret_flag  <= idu_mret_flag;
-	     exu_curr_pc    <= idu_curr_pc;
-	     exu_csr_rd     <= csr_rd;
-             exu_csr_wr_flag<= idu_csr_wr_flag;        
-	     exu_csr_addr   <= idu_csr_addr; 
-	     exu_reg_we     <= idu_reg_we;  
-             exu_rd_addr    <= idu_rd_addr;
+             imm_reg         <= idu_imm   ;
+	     alu_op_reg      <= idu_alu_op;
+	     exu_rs1         <= rs1;
+	     exu_rs2         <= rs2;
+	     exu_mem_we      <= idu_mem_we;  
+             exu_mem_re      <= idu_mem_re;  
+             exu_byte_type   <= idu_byte_type;
+             exu_sign_type   <= idu_sign_type;
+             exu_load_flag   <= idu_load_flag;
+	     exu_break_flag  <= idu_break_flag;
+             exu_ecall_flag  <= idu_ecall_flag;
+             exu_mret_flag   <= idu_mret_flag;
+	     exu_curr_pc     <= idu_curr_pc;
+	     exu_csr_rd      <= csr_rd;
+             exu_csr_wr_flag <= idu_csr_wr_flag;        
+	     exu_csr_addr    <= idu_csr_addr; 
+	     exu_reg_we      <= idu_reg_we;  
+             exu_rd_addr     <= idu_rd_addr;
      end
 end
 
@@ -188,8 +251,8 @@ always @(*) begin
 
    exu_rd_wr    = 32'h0;
    csr_wr   = 32'h0;
-   mem_wr_addr = 32'h0;
-   mem_rd_addr = 32'h0;
+   exu_mem_wr_addr = 32'h0;
+   exu_mem_rd_addr = 32'h0;
    system_flag = 1'b0;
 	case(alu_op_reg)
 		 6'd0: exu_rd_wr = exu_rs1 + exu_rs2 ;  //add
@@ -209,11 +272,11 @@ always @(*) begin
 		 6'd14:exu_rd_wr = exu_rs1 & imm_reg ;  //andi
 		 6'd15:exu_rd_wr = {imm_reg[31:12],12'b0} ;  //lui
 		 6'd16:exu_rd_wr = exu_curr_pc + {imm_reg[31:12],12'b0} ; //auipc
-		 6'd17:mem_rd_addr = exu_rs1 + imm_reg ; //lb 
-	         6'd18:mem_rd_addr = exu_rs1 + imm_reg ; //lw 
-	         6'd19:mem_rd_addr = exu_rs1 + imm_reg ; //lbu 
-		 6'd20:mem_wr_addr = exu_rs1 + imm_reg ; //sw     
-		 6'd21:mem_wr_addr = exu_rs1 + imm_reg ; //sb 
+		 6'd17:exu_mem_rd_addr = exu_rs1 + imm_reg ; //lb 
+	         6'd18:exu_mem_rd_addr = exu_rs1 + imm_reg ; //lw 
+	         6'd19:exu_mem_rd_addr = exu_rs1 + imm_reg ; //lbu 
+		 6'd20:exu_mem_wr_addr = exu_rs1 + imm_reg ; //sw     
+		 6'd21:exu_mem_wr_addr = exu_rs1 + imm_reg ; //sb 
 		 6'd22: begin  //jal
                          exu_rd_wr = exu_curr_pc + 4;  //pc + 4
                          jump_pc = exu_curr_pc + imm_reg; 
@@ -262,9 +325,9 @@ always @(*) begin
 		     end
 	         6'd31: exu_rd_wr = ($signed(exu_rs1)<$signed(imm_reg))? 32'h1:32'h0; //slti
 		 6'd32: exu_rd_wr = (exu_rs1<imm_reg)? 32'h1:32'h0; //sltiu 
-		 6'd33: mem_rd_addr = exu_rs1 + imm_reg ; //lh
-		 6'd34: mem_rd_addr = exu_rs1 + imm_reg ; //lhu 	     
-	         6'd35: mem_wr_addr = exu_rs1 + imm_reg ; //sh
+		 6'd33: exu_mem_rd_addr = exu_rs1 + imm_reg ; //lh
+		 6'd34: exu_mem_rd_addr = exu_rs1 + imm_reg ; //lhu 	     
+	         6'd35: exu_mem_wr_addr = exu_rs1 + imm_reg ; //sh
 	         6'd36: exu_rd_wr = exu_rs1 | imm_reg ; //ori
 		 6'd37: exu_rd_wr = exu_rs1 | exu_rs2 ; //or
 		 6'd38:begin  
@@ -280,8 +343,8 @@ always @(*) begin
 		default:begin
                          exu_rd_wr    = 32'h0;
 			 csr_wr   = 32'h0;
-		         mem_wr_addr = 32'h0;
-	                 mem_rd_addr = 32'h0;
+		         exu_mem_wr_addr = 32'h0;
+	                 exu_mem_rd_addr = 32'h0;
 			 system_flag = 1'b0;
 	               end		  
 	 endcase

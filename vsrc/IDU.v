@@ -31,7 +31,8 @@ module IDU
     input  wire        exu_ready  ,
     output reg         idu_valid  ,
     output wire        jump_flag  ,
-    output wire        trap_flag   
+    output wire        trap_flag  ,
+    output wire        lsu_flag    
 );
 
 import "DPI-C" function void goodtrap_dpi();
@@ -40,38 +41,45 @@ import "DPI-C" function void badtrap_dpi();
 ////////////////////////////状态机//////////////////////////////
 localparam  IDLE = 2'd0, SEND = 2'd1;
 
-reg  [1:0]  curr_state,next_state;
+reg  [1:0]  curr_state;
 reg  [31:0] inst_reg;
 
 always @(posedge clk or negedge rst_n)begin
-      if(!rst_n)
-	    curr_state <= IDLE;
-      else 
-	    curr_state <= next_state;   
-end
-
-always @(*)begin
-      case(curr_state)
-	      IDLE: begin
-                    if_id_ready  = 1'b1;
-		    idu_valid  = 1'b0; 
-		    if(if_id_valid)
-		       next_state = SEND;
-		    else
-		       next_state = IDLE;  
-	      end
-	      SEND:begin
-                    if_id_ready  = 1'b0;
-		    idu_valid = 1'b1;
-                    if(exu_ready)
-		       next_state = IDLE;
-                    else
-	               next_state = SEND;		    
-	      end
+	if(!rst_n)begin
+           curr_state  <= IDLE;
+	   if_id_ready <= 1'b1;
+           idu_valid   <= 1'b0;
+	end
+        else
+	case(curr_state)
+		IDLE:begin 
+		  if(if_id_valid)begin
+                    if_id_ready<= 1'b0;
+		    idu_valid  <= 1'b1;
+		    curr_state <= SEND; 
+	          end
+		  else begin
+                    if_id_ready<= 1'b1;
+                    idu_valid  <= 1'b0;
+                    curr_state <= IDLE; 
+		  end 
+	        end
+		SEND:begin
+		  if(exu_ready)begin
+		    curr_state <= IDLE;
+                    if_id_ready<= 1'b1;
+		    idu_valid  <= 1'b0;
+	          end  
+		  else begin
+	            curr_state <= SEND;		    
+	            if_id_ready<= 1'b0;
+		    idu_valid  <= 1'b1;
+	          end 
+	       end
 	      default:begin
-                    if_id_ready = 1'b1;
-		    idu_valid  = 1'b0;
-                    next_state = IDLE;
+                    if_id_ready<= 1'b1;
+		    idu_valid  <= 1'b0;
+                    curr_state <= IDLE;
 	      end
       endcase
 end
@@ -101,7 +109,7 @@ assign funct7     = inst_reg[31:25];
 assign csr_addr   = inst_reg[31:20];
 assign jump_flag  = alu_op==6'd22||alu_op==6'd23||(alu_op>=6'd25&&alu_op<=6'd30);
 assign trap_flag  = alu_op==6'd24||alu_op==6'd40||alu_op==6'd41;
-
+assign lsu_flag   = (alu_op>=6'd17&&alu_op<=6'd21)||(alu_op>=6'd33&&alu_op<=6'd35);
 
 always @(*)begin
      case (opcode) 	     
@@ -367,7 +375,7 @@ always @(*)begin
 		                csr_wr_flag= 1'b0 ;
 				mret_flag  = 1'b0 ;	
 				alu_op     = 6'd24;
-		                goodtrap_dpi();
+		                //goodtrap_dpi();
 		              end
 		        12'h2:begin  //bad trap 
                                 idu_reg_we = 1'b0 ;
@@ -376,7 +384,7 @@ always @(*)begin
 		                csr_wr_flag= 1'b0 ;
 				mret_flag  = 1'b0 ;
 				alu_op     = 6'd24;
-		                badtrap_dpi();
+		                //badtrap_dpi();
 		              end
 		      12'h302:begin  //mret
                                 idu_reg_we = 1'b0 ;
@@ -393,7 +401,7 @@ always @(*)begin
 			        csr_wr_flag= 1'b0 ;
 				mret_flag  = 1'b0 ;
 				alu_op     = 6'd24;
-			        badtrap_dpi();	               
+			        //badtrap_dpi();	               
 		              end		  
 	             endcase
 		 //csrrw
@@ -424,7 +432,7 @@ always @(*)begin
 		      csr_wr_flag  = 1'b0 ; 
 		      mret_flag    = 1'b0 ; 
 		      alu_op       = 6'd24;
-	              badtrap_dpi();
+	              //badtrap_dpi();
 	             end
 	    endcase
       end

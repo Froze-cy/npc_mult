@@ -423,8 +423,16 @@ int main(int argc, char** argv) {
 	curr_inst  = dut.inst    ;
 	global_a0  = get_debug_reg(10);
         cycle++;
-
-        if (trap_hit) break;   // 触发 ebreak 后立即退出循环
+        //检测trap信号
+        if (dut.good_trap) {       // 假设顶层输出信号名为 goodtrap
+        goodtrap_dpi();
+        break;                    // 立即退出循环
+      }
+        if (dut.bad_trap) {        // 假设顶层输出信号名为 badtrap
+        badtrap_dpi();
+        break;
+      }
+       // if (trap_hit) break;   // 触发 ebreak 后立即退出循环
         static uint32_t last_s0 = 0,last_s1 = 0,last_x15 = 0; 
         uint32_t s0 = get_debug_reg(8);
         uint32_t s1 = get_debug_reg(9);

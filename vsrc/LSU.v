@@ -22,7 +22,7 @@ import "DPI-C" function int pmem_read(input int raddr);
 import "DPI-C" function void pmem_write(input int waddr,input int wdata,input byte wmask);
 /////////////////////////状态机////////////////////////////////
 localparam IDLE = 2'd0, LD_ST = 2'd1;
-reg [1:0]  curr_state,next_state;
+reg [1:0]  curr_state;
 reg [1:0]  byte_type_reg;
 reg        sign_type_reg;
 reg        mem_we_reg;
@@ -32,51 +32,52 @@ reg [31:0] store_data_reg;
 reg [31:0] load_addr_reg;
 
 always @(posedge clk or negedge rst_n)begin
-     if(!rst_n)
-	   curr_state <= IDLE;
-     else
-	   curr_state <= next_state;  
-end
-
-always @(*)begin
-     case(curr_state)
+	if(!rst_n)begin
+           ex_ls_ready    <= 1'b1;
+           lsu_data_valid <= 1'b0; 
+           curr_state     <= IDLE;
+	end
+	else case(curr_state)
 	     IDLE:begin
-                  ex_ls_ready = 1'b1;
-		  lsu_data_valid = 1'b0;
-                  if(ex_ls_valid)
-			next_state = LD_ST;
-	          else
-			next_state = IDLE;  
+		   if(ex_ls_valid)begin
+		    curr_state     <= LD_ST;
+                    ex_ls_ready    <= 1'b0;
+		    lsu_data_valid <= 1'b1;
+		   end
+		   else begin
+		    curr_state     <= IDLE; 
+		    ex_ls_ready    <= 1'b1;
+		    lsu_data_valid <= 1'b0;
+		   end	
 	     end
 	     LD_ST:begin
-	          ex_ls_ready  = 1'b0;
-		  lsu_data_valid = 1'b1;
-                  next_state = IDLE; 		  
+	            ex_ls_ready    <= 1'b1;
+		    lsu_data_valid <= 1'b0;
+                    curr_state     <= IDLE; 		  
 	     end
 	     default:begin
-                  ex_ls_ready  = 1'b1;
-		  lsu_data_valid = 1'b0;
-		  next_state = IDLE;
+                    ex_ls_ready    <= 1'b1;
+		    lsu_data_valid <= 1'b0;
+		    curr_state     <= IDLE;
 	     end
      endcase
 end
 
 always @(posedge clk or negedge rst_n)begin
      if(!rst_n)begin
-         byte_type_reg <= 2'b0;
-         sign_type_reg <= 1'b0;
-         mem_we_reg <= 1'b0;
-         mem_re_reg <= 1'b0;
+         byte_type_reg  <= 2'b0;
+         sign_type_reg  <= 1'b0;
+         mem_we_reg     <= 1'b0;
+         mem_re_reg     <= 1'b0;
          store_addr_reg <= 32'b0;
          store_data_reg <= 32'b0;
          load_addr_reg  <= 32'b0;
-
      end
      else if(ex_ls_valid&&ex_ls_ready)begin
-         byte_type_reg <= exu_byte_type;
-         sign_type_reg <= exu_sign_type;
-         mem_we_reg <= exu_mem_we;
-         mem_re_reg <= exu_mem_re;
+         byte_type_reg  <= exu_byte_type;
+         sign_type_reg  <= exu_sign_type;
+         mem_we_reg     <= exu_mem_we;
+         mem_re_reg     <= exu_mem_re;
          store_addr_reg <= store_addr;
          store_data_reg <= store_data;
          load_addr_reg  <= load_addr ;
@@ -94,7 +95,7 @@ assign mem_wr_addr = {store_addr_reg[31:2],2'b0};
 assign offset      = load_addr_reg[1:0];
 
 always @(*)begin
-	if(mem_re_reg)
+   if(mem_re_reg)
        mem_rd_data = pmem_read(mem_rd_addr);
    else 
        mem_rd_data = 32'h0;	     

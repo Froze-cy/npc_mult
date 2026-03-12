@@ -1,6 +1,7 @@
 module csr_regfile(
     input  wire        clk         ,  
-    input  wire        rst_n       ,                         
+    input  wire        rst_n       ,
+    output reg         break_done  ,    
     //CSR<-->IFU
     output reg  [31:0] trap_pc     ,
     //CSR_IFU 握手
@@ -23,43 +24,53 @@ module csr_regfile(
 
 /////////////////////////////状态机///////////////////////////////
 localparam IDLE = 2'd0, TRAP_SEND = 2'd1; 
-reg [1:0]  curr_state,next_state;
+reg [1:0]  curr_state;
 reg        ecall_flag_reg;
 reg        break_flag_reg;
 reg        mret_flag_reg;
 reg [31:0] curr_pc_reg;
 
-
-
 always @(posedge clk or negedge rst_n)begin
-      if(!rst_n)
-	    curr_state <= IDLE;
-      else
-	    curr_state <= next_state;  
-end
-
-always @(*)begin
-     case(curr_state)
+	if(!rst_n)begin
+                      trap_valid   <= 1'b0;    
+                      ex_csr_ready <= 1'b1;
+                      curr_state   <= IDLE;
+                      break_done   <= 1'b0;
+      	end
+	else case(curr_state)
 	     IDLE:begin
-                  trap_valid   = 1'b0;
-		  ex_csr_ready = 1'b1;
-		  if(ex_csr_valid)
-		      next_state = TRAP_SEND;
-	          else
-		      next_state = IDLE;	  
+                  if(ex_csr_valid)begin
+		      curr_state   <= TRAP_SEND;
+	              trap_valid   <= 1'b1;
+		      ex_csr_ready <= 1'b0;
+		      break_done   <= 1'b0;
+	          end
+		  else begin
+		      curr_state   <= IDLE;
+	              trap_valid   <= 1'b0;
+		      ex_csr_ready <= 1'b1;
+		      break_done   <= 1'b0;
+	          end	      
 	     end
 	     TRAP_SEND:begin 
-		  trap_valid   = 1'b1;
-		  ex_csr_ready = 1'b0;
-		  if(pc_ready)
-		      next_state  = IDLE;
-		  else
-		      next_state  = TRAP_SEND;	      
+	          if(pc_ready)begin
+		      curr_state   <= IDLE;
+		      trap_valid   <= 1'b0;
+		      ex_csr_ready <= 1'b1;
+		      break_done   <= break_flag_reg;
+	          end    
+		  else begin
+		      curr_state   <= TRAP_SEND;
+	              trap_valid   <= 1'b1;
+		      ex_csr_ready <= 1'b0;
+		      break_done   <= 1'b0;
+	          end	      
 	     end
 	     default:begin
-                  trap_valid   = 1'b0;
-		  ex_csr_ready = 1'b0;
-                  next_state = IDLE;
+                      trap_valid   <= 1'b0;
+	              ex_csr_ready <= 1'b1;
+                      curr_state   <= IDLE;
+		      break_done   <= 1'b0;
 	     end
      endcase
 end
@@ -122,13 +133,13 @@ always @(*)begin
 	MCYCLEH: csr_rd = mcycleh;
       MVENDORID: csr_rd = mvendorid;
         MARCHID: csr_rd = marchid;
-        default: csr_rd = 32'h0;	
+        default: csr_rd = 32'hffffffff;	
      endcase
 end
 
 //trap_pc
 always @(*)begin
-   if(ecall_flag_reg || break_flag_reg)
+   if(ecall_flag_reg||break_flag_reg)
         trap_pc = {mtvec[31:2],2'b0};	   
    else if(mret_flag_reg)
 	trap_pc = mepc;

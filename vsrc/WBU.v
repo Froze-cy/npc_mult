@@ -1,7 +1,5 @@
 module WBU
 (   
-    input  wire        clk            ,
-    input  wire        rst_n          ,
     input  wire [31:0] exu_rd_wr      ,
     input  wire [4:0]  exu_rd_addr    ,
     input  wire        exu_reg_we     ,
@@ -10,21 +8,13 @@ module WBU
     input  wire        lsu_data_valid , 
     output wire [31:0] wbu_wr_data    ,   
     output wire        wbu_we         ,
-    output wire [4:0]  wbu_wr_addr    , 
-    output reg         wb_done    
+    output wire [4:0]  wbu_wr_addr     
 );
 
 
 assign wbu_we      = exu_load_flag?lsu_data_valid:exu_reg_we;
 assign wbu_wr_data = exu_load_flag?lsu_load_data:exu_rd_wr;
 assign wbu_wr_addr = exu_rd_addr;
-//assign wb_done     = wbu_we;
 
-always @(posedge clk or negedge rst_n)begin
-    if(!rst_n)
-	  wb_done <= 1'b0;  
-    else
-	  wb_done <= wbu_we;  
-end
 
 endmodule
