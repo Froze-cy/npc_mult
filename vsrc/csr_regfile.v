@@ -1,6 +1,7 @@
 module csr_regfile(
     input  wire        clk         ,  
     input  wire        rst_n       ,
+    input  wire        mcycle_flag ,
     output reg         break_done  ,    
     //CSR<-->IFU
     output reg  [31:0] trap_pc     ,
@@ -83,13 +84,18 @@ always @(posedge clk or negedge rst_n)begin
             curr_pc_reg    <= 32'b0;
         end
 	else if(ex_csr_valid&&ex_csr_ready)begin
-            ecall_flag_reg <= ecall_flag ;
-            break_flag_reg <= break_flag ;
-            mret_flag_reg  <= mret_flag  ;
-            curr_pc_reg    <= curr_pc    ;
+            ecall_flag_reg <= ecall_flag;
+            break_flag_reg <= break_flag;
+            mret_flag_reg  <= mret_flag ;
+            curr_pc_reg    <= curr_pc   ;
+        end
+ 	else if(trap_valid&&pc_ready)begin
+            ecall_flag_reg <= 1'b0 ;
+            break_flag_reg <= 1'b0 ;
+            mret_flag_reg  <= 1'b0 ;
         end	
+	
 end
-
 
 //////////////////////////////////////////////////////////////////
 
@@ -205,7 +211,7 @@ always @(posedge clk or negedge rst_n)begin
          mcycle <= 32'h0;
      else if(csr_wr_flag&&csr_addr==MCYCLE)
 	 mcycle <= csr_wr;
-     else 
+     else if(mcycle_flag)
 	 mcycle <= mcycle + 32'h1;   
 end
 
@@ -215,7 +221,7 @@ always @(posedge clk or negedge rst_n)begin
 	 mcycleh <= 32'h0;   
     else if(csr_wr_flag&&csr_addr==MCYCLEH)
 	 mcycleh <= csr_wr;   
-    else if(&mcycle)
+    else if(mcycle_flag&&(&mcycle))
 	 mcycleh <= mcycleh + 32'h1;
 end
 

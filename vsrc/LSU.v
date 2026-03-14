@@ -30,6 +30,8 @@ reg        mem_re_reg;
 reg [31:0] store_addr_reg;
 reg [31:0] store_data_reg;
 reg [31:0] load_addr_reg;
+reg        handshake_reg;
+
 
 always @(posedge clk or negedge rst_n)begin
 	if(!rst_n)begin
@@ -82,8 +84,13 @@ always @(posedge clk or negedge rst_n)begin
          store_data_reg <= store_data;
          load_addr_reg  <= load_addr ;
      end
+     else if(curr_state==LD_ST)begin
+         mem_we_reg     <= 1'b0;
+         mem_re_reg     <= 1'b0;
+     end
 end
 
+/////////////////////////////////////////////////////////////////////
 
 wire [31:0] mem_rd_addr ;
 wire [31:0] mem_wr_addr ;
@@ -102,12 +109,19 @@ always @(*)begin
 end
 
 
+always @(posedge clk or negedge rst_n)begin
+    if(!rst_n)
+	  handshake_reg <= 1'b0;
+    else
+	  handshake_reg <= ex_ls_valid && ex_ls_ready;  
+end
+
 always @(posedge clk)begin
-    if(mem_we_reg&&byte_type_reg==2'b0)  //sw
+    if(handshake_reg&&mem_we_reg&&byte_type_reg==2'b0)  //sw
         pmem_write(mem_wr_addr,store_data_reg,8'b1111);
-    else if(mem_we_reg&&byte_type_reg==2'b1) //sb
+    else if(handshake_reg&&mem_we_reg&&byte_type_reg==2'b1) //sb
 	pmem_write(mem_wr_addr,store_data_reg,8'b0001<<store_addr_reg[1:0]);
-    else if(mem_we_reg&&byte_type_reg==2'b10) //sh
+    else if(handshake_reg&&mem_we_reg&&byte_type_reg==2'b10) //sh
 	pmem_write(mem_wr_addr,store_data_reg,8'b0011<<store_addr_reg[1:0]);
 end
 

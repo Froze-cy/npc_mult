@@ -57,6 +57,7 @@ module EXU
     output  reg        ex_csr_valid   ,
     input  wire        ex_csr_ready   ,
     //WBU
+    output  reg        exu_reg_done   ,
     output  reg [31:0] exu_rd_wr      ,
     output  reg [4:0]  exu_rd_addr    ,
     output  reg        exu_reg_we     ,
@@ -72,7 +73,7 @@ reg [2:0]  curr_state;
 reg [31:0] imm_reg;
 reg [5:0]  alu_op_reg;
 reg [31:0] exu_rs1;
-reg [31:0] exu_csr_rd;
+//reg [31:0] exu_csr_rd;
 
 always @(posedge clk or negedge rst_n)begin
 	if(!rst_n)begin
@@ -82,6 +83,7 @@ always @(posedge clk or negedge rst_n)begin
                jump_valid  <= 1'b0;
 	       ex_ls_valid <= 1'b0;
 	       exu_done    <= 1'b0;
+	       exu_reg_done<= 1'b0;
 	end
 	else case(curr_state)
 	       IDLE:begin
@@ -91,7 +93,8 @@ always @(posedge clk or negedge rst_n)begin
 		           ex_ls_valid <= 1'b0;
 		           ex_csr_valid<= 1'b1;
 		           jump_valid  <= 1'b0;
-			   exu_done    <= 1'b0; 
+			   exu_done    <= 1'b0;
+			   exu_reg_done<= 1'b0; 
 		      end
 		      else if(idu_valid&&jump_flag)begin
 			   curr_state  <= JUMP;
@@ -99,7 +102,8 @@ always @(posedge clk or negedge rst_n)begin
 		           ex_ls_valid <= 1'b0;
 		           ex_csr_valid<= 1'b0;
 		           jump_valid  <= 1'b1;
-			   exu_done    <= 1'b0; 
+			   exu_done    <= 1'b0;
+			   exu_reg_done<= 1'b0; 
 		      end
 		      else if(idu_valid&&lsu_flag)begin
 			   curr_state  <= LSU_SEND;
@@ -108,6 +112,7 @@ always @(posedge clk or negedge rst_n)begin
 		           ex_csr_valid<= 1'b0;
 		           jump_valid  <= 1'b0;
 			   exu_done    <= 1'b0;
+                           exu_reg_done<= 1'b0; 
 		      end
                       else if(idu_valid)begin
 			   curr_state  <= ALU_SEND;
@@ -116,6 +121,7 @@ always @(posedge clk or negedge rst_n)begin
 		           ex_csr_valid<= 1'b0;
 		           jump_valid  <= 1'b0;
 			   exu_done    <= 1'b0;
+		           exu_reg_done<= 1'b0; 
 		      end
 		      else begin
 			   curr_state  <= IDLE;   
@@ -124,6 +130,7 @@ always @(posedge clk or negedge rst_n)begin
 		           ex_csr_valid<= 1'b0;
 		           jump_valid  <= 1'b0;
 			   exu_done    <= 1'b0; 
+		           exu_reg_done<= 1'b0; 
 		      end
 	       end
 	       JUMP:begin 
@@ -134,6 +141,7 @@ always @(posedge clk or negedge rst_n)begin
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
 			   exu_done    <= 1'b0; 
+                           exu_reg_done<= 1'b1; 
 		      end
 		      else begin
 			   curr_state  <= JUMP;   
@@ -142,7 +150,8 @@ always @(posedge clk or negedge rst_n)begin
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b1;
 			   exu_done    <= 1'b0; 
-                      end
+                           exu_reg_done<= 1'b0; 
+		      end
 	       end
 	       WAIT_CSR:begin 
 	             if(ex_csr_ready)begin   
@@ -152,6 +161,7 @@ always @(posedge clk or negedge rst_n)begin
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
 		           exu_done    <= 1'b0; 
+		           exu_reg_done<= 1'b0; 
 		     end 
 		     else begin
 			   curr_state  <= WAIT_CSR;     
@@ -160,7 +170,8 @@ always @(posedge clk or negedge rst_n)begin
                            ex_csr_valid<= 1'b1;
                            jump_valid  <= 1'b0;
 		           exu_done    <= 1'b0;	
-	             end
+	                   exu_reg_done<= 1'b0; 
+		     end
 	       end
 	       LSU_SEND:begin 
 	             if(ex_ls_ready)begin
@@ -170,6 +181,7 @@ always @(posedge clk or negedge rst_n)begin
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
 			   exu_done    <= 1'b1; 
+		           exu_reg_done<= 1'b1; 
 		     end
 		     else begin
 			   curr_state  <= LSU_SEND;  
@@ -177,7 +189,8 @@ always @(posedge clk or negedge rst_n)begin
                            ex_ls_valid <= 1'b1;
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
-			   exu_done    <= 1'b0; 
+			   exu_done    <= 1'b0;
+                           exu_reg_done<= 1'b0; 
 	             end		   
 	       end
              ALU_SEND:begin
@@ -186,15 +199,17 @@ always @(posedge clk or negedge rst_n)begin
                            ex_ls_valid <= 1'b0;
                            ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
-			   exu_done    <= 1'b1; 		   
-	       end
+			   exu_done    <= 1'b1; 
+                           exu_reg_done<= 1'b1; 
+	              end
 	      default:begin
                            exu_ready   <= 1'b1;
 		           ex_ls_valid <= 1'b0;
 		           ex_csr_valid<= 1'b0;
                            jump_valid  <= 1'b0;
 		           exu_done    <= 1'b0;
-		           curr_state  <= IDLE;
+		           exu_reg_done<= 1'b0; 
+			   curr_state  <= IDLE;
 	       end
        endcase
 end
@@ -215,7 +230,7 @@ always @(posedge clk or negedge rst_n)begin
              exu_mret_flag   <= 1'b0; 
 	     exu_load_flag   <= 1'b0;
 	     exu_curr_pc     <= 32'h0;
-	     exu_csr_rd      <= 32'h0;
+	     //exu_csr_rd      <= 32'h0;
              exu_csr_wr_flag <= 1'b0;
              exu_csr_addr    <= 12'b0;
 	     exu_reg_we      <= 1'b0;
@@ -235,7 +250,7 @@ always @(posedge clk or negedge rst_n)begin
              exu_ecall_flag  <= idu_ecall_flag;
              exu_mret_flag   <= idu_mret_flag;
 	     exu_curr_pc     <= idu_curr_pc;
-	     exu_csr_rd      <= csr_rd;
+	     //exu_csr_rd      <= csr_rd;
              exu_csr_wr_flag <= idu_csr_wr_flag;        
 	     exu_csr_addr    <= idu_csr_addr; 
 	     exu_reg_we      <= idu_reg_we;  
@@ -331,12 +346,12 @@ always @(*) begin
 	         6'd36: exu_rd_wr = exu_rs1 | imm_reg ; //ori
 		 6'd37: exu_rd_wr = exu_rs1 | exu_rs2 ; //or
 		 6'd38:begin  
-		        exu_rd_wr = exu_csr_rd ;   //csrrw
+		        exu_rd_wr = csr_rd ;   //csrrw
 			csr_wr= exu_rs1 ; 
                         end
 	         6'd39:begin
-			exu_rd_wr = exu_csr_rd ;      //csrrs
-                        csr_wr= exu_csr_rd | exu_rs1 ;
+			exu_rd_wr = csr_rd ;      //csrrs
+                        csr_wr= csr_rd | exu_rs1 ;
 		       end
 		 6'd40: system_flag = exu_ecall_flag; //ecall
 		 6'd41: system_flag = exu_mret_flag; //mret 	 

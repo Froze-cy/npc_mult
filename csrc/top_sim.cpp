@@ -69,6 +69,8 @@ static struct {
 static int exit_code = 0;
 static bool trap_hit = false;
 
+
+static int cycle = 0 ;
 uint32_t global_a0 = 0 ;
 uint32_t current_pc ;
 uint32_t curr_inst  ;
@@ -229,7 +231,9 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     if (addr == SERIAL_ADDR) {
         for (int i = 0; i < 4; i++) {
             if (wmask & (1 << i)) {
-                putchar((char)(wdata >> (i * 8))); // 串口输出仍按原方式（因为串口写通常字节）
+                char c = (char)(wdata >> (i * 8));
+                //printf("[NPC] putchar '%c' (0x%02x) at cycle %d\n", c, c, cycle); 
+                putchar(c); // 串口输出仍按原方式（因为串口写通常字节）
                 fflush(stdout);
             }
         }
@@ -408,7 +412,7 @@ int main(int argc, char** argv) {
 
     uint32_t prev_pc = dut.curr_pc;
     int same_pc_count= 0;
-    int cycle = 0; 
+    //int cycle = 0; 
     vluint64_t sim_time = 0;
     uint32_t last_pc = 0;
     uint32_t last_inst = 0;    

@@ -49,6 +49,7 @@ wire        idu_csr_wr_flag;
 
 //EXU
 wire        exu_done       ;
+wire        exu_reg_done   ;
 wire        jump_valid     ;
 wire [31:0] jump_pc        ;
 wire        ex_csr_valid   ;
@@ -86,6 +87,7 @@ wire [31:0] rs1            ;
 wire [31:0] rs2            ;
 
 //csr_regfile
+wire        mcycle_flag    ;
 wire        break_done     ;
 wire        trap_valid     ;
 wire [31:0] trap_pc        ;
@@ -93,19 +95,26 @@ wire        ex_csr_ready   ;
 wire [31:0] csr_rd         ;
 
 /////////////////////////////////////////////////////////////
+reg jump_valid_reg;
 
-assign good_trap = break_done&&inst[31:20]==12'h1;
-assign bad_trap  = break_done&&inst[31:20]==12'h2;
+assign good_trap   = break_done&&inst[31:20]==12'h1;
+assign bad_trap    = break_done&&inst[31:20]==12'h2;
+assign mcycle_flag = exu_done||jump_valid_reg||trap_valid;
+//assign diff_flag   = exu_done||jump_valid_reg||trap_valid;
+
+always @(posedge clk or negedge rst_n)begin
+       if(!rst_n)
+	      jump_valid_reg <= 1'b0;
+       else
+	      jump_valid_reg <= jump_valid; 
+end
 
 always @(posedge clk or negedge rst_n)begin
        if(!rst_n)
 	      diff_flag <= 1'b0;
        else
-	      diff_flag <= exu_done||jump_valid||trap_valid; 
+	      diff_flag <= exu_done||jump_valid_reg||trap_valid;
 end
-
-//assign diff_flag = exu_done;
-//assign diff_flag = trap_valid || wb_done || jump_valid;
 
 /////////////////////////////////////////////////////////////
 IFU  IFU_inst
@@ -216,6 +225,7 @@ EXU EXU_inst
 .exu_byte_type  (exu_byte_type  ) ,
 .exu_sign_type  (exu_sign_type  ) ,
 //EXU<-->WBU
+.exu_reg_done   (exu_reg_done   ) ,
 .exu_reg_we     (exu_reg_we     ) ,
 .exu_rd_addr    (exu_rd_addr    ) ,
 .exu_rd_wr      (exu_rd_wr      ) , 
@@ -250,6 +260,7 @@ LSU LSU_inst
 /////////////////////////////////////////////////////////////
 WBU WBU_inst
 (
+.exu_reg_done  (exu_reg_done  ) ,
 .exu_load_flag (exu_load_flag ) ,
 .exu_rd_wr     (exu_rd_wr     ) ,   
 .exu_reg_we    (exu_reg_we    ) ,
@@ -281,6 +292,7 @@ csr_regfile csr_regfile_inst
 (
 .clk         (clk            ),  
 .rst_n       (rst_n          ),
+.mcycle_flag (mcycle_flag    ),
 .break_done  (break_done     ),
 .csr_addr    (exu_csr_addr   ), 
 .ex_csr_valid(ex_csr_valid   ),
