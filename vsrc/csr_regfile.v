@@ -28,6 +28,7 @@ localparam IDLE = 2'd0, TRAP_SEND = 2'd1;
 reg [1:0]  curr_state;
 reg        ecall_flag_reg;
 reg        break_flag_reg;
+reg        r_break_done  ;
 reg        mret_flag_reg;
 reg [31:0] curr_pc_reg;
 
@@ -35,8 +36,7 @@ always @(posedge clk or negedge rst_n)begin
 	if(!rst_n)begin
                       trap_valid   <= 1'b0;    
                       ex_csr_ready <= 1'b1;
-                      curr_state   <= IDLE;
-                      break_done   <= 1'b0;
+                      curr_state   <= IDLE; 
       	end
 	else case(curr_state)
 	     IDLE:begin
@@ -44,13 +44,11 @@ always @(posedge clk or negedge rst_n)begin
 		      curr_state   <= TRAP_SEND;
 	              trap_valid   <= 1'b1;
 		      ex_csr_ready <= 1'b0;
-		      break_done   <= 1'b0;
 	          end
 		  else begin
 		      curr_state   <= IDLE;
 	              trap_valid   <= 1'b0;
 		      ex_csr_ready <= 1'b1;
-		      break_done   <= 1'b0;
 	          end	      
 	     end
 	     TRAP_SEND:begin 
@@ -58,20 +56,17 @@ always @(posedge clk or negedge rst_n)begin
 		      curr_state   <= IDLE;
 		      trap_valid   <= 1'b0;
 		      ex_csr_ready <= 1'b1;
-		      break_done   <= break_flag_reg;
 	          end    
 		  else begin
 		      curr_state   <= TRAP_SEND;
 	              trap_valid   <= 1'b1;
 		      ex_csr_ready <= 1'b0;
-		      break_done   <= 1'b0;
 	          end	      
 	     end
 	     default:begin
                       trap_valid   <= 1'b0;
 	              ex_csr_ready <= 1'b1;
                       curr_state   <= IDLE;
-		      break_done   <= 1'b0;
 	     end
      endcase
 end
@@ -84,10 +79,10 @@ always @(posedge clk or negedge rst_n)begin
             curr_pc_reg    <= 32'b0;
         end
 	else if(ex_csr_valid&&ex_csr_ready)begin
-            ecall_flag_reg <= ecall_flag;
-            break_flag_reg <= break_flag;
-            mret_flag_reg  <= mret_flag ;
-            curr_pc_reg    <= curr_pc   ;
+            ecall_flag_reg <= ecall_flag    ;
+            break_flag_reg <= break_flag    ;
+            mret_flag_reg  <= mret_flag     ;
+            curr_pc_reg    <= curr_pc       ;
         end
  	else if(trap_valid&&pc_ready)begin
             ecall_flag_reg <= 1'b0 ;
@@ -96,6 +91,19 @@ always @(posedge clk or negedge rst_n)begin
         end	
 	
 end
+
+always @(posedge clk or negedge rst_n)begin
+	if(!rst_n)begin
+	     r_break_done <= 1'b0;
+             break_done   <= 1'b0;
+     end
+     else begin
+	     r_break_done <= break_flag_reg;	
+             break_done   <= break_flag_reg;
+     end
+end
+
+
 
 //////////////////////////////////////////////////////////////////
 

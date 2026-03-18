@@ -59,7 +59,7 @@ always @(posedge clk or negedge rst_n)begin
                      curr_state      <= WAIT_PC;
 	             if_id_valid     <= 1'b0;
 		     imem_addr_valid <= 1'b0;
-		     pc_ready        <= 1'b0; 	     
+		     pc_ready        <= 1'b1; 	     
 	          end
 	     else begin
 	             curr_state      <= INST_SEND;		  

@@ -113,7 +113,7 @@ always @(posedge clk or negedge rst_n)begin
        if(!rst_n)
 	      diff_flag <= 1'b0;
        else
-	      diff_flag <= exu_done||jump_valid_reg||trap_valid;
+	      diff_flag <= exu_done||jump_valid||trap_valid;
 end
 
 /////////////////////////////////////////////////////////////
